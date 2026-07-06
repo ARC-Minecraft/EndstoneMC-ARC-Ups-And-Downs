@@ -120,20 +120,30 @@ class UpAndDownPlugin(Plugin):
     def on_disable(self) -> None:
         pass
 
+    def _extract_player_name(self, name: str) -> str:
+        """
+        从可能包含格式代码的名称中提取真实玩家名
+        例如: §c[主宰]§rDEVILENMO -> DEVILENMO
+        """
+        if "§r" in name:
+            return name.split("§r")[-1]
+        return name
 
     def execute_command(self, sender: CommandSender, args: list[str], return_value:bool, callback=None, callback_args=None):
+        player_name = self._extract_player_name(sender.name)
+        print(f"sender name {sender.name} -> {player_name}, execute_command: {args}")
         def command_executor():
             try:
                 # 处理UI命令（不需要线程处理）
                 if args[0] == "ui":
-                    player = self.server.get_player(sender.name)
-                    if player and hasattr(player, 'send_form'):
+                    player = self.server.get_player(player_name)
+                    if player:
                         self.ui_manager.show_main_panel(player)
                     else:
                         sender.send_message("§c只有玩家可以使用UI面板")
                     return
                 
-                player = self.server.get_player(sender.name)
+                player = self.server.get_player(player_name)
                 xuid = player.xuid
                 
                 if args[0] != "transferin":
@@ -296,7 +306,8 @@ class UpAndDownPlugin(Plugin):
         
     def transfer_in(self, xuid, sender, args):
         amount = float(args[1])
-        player = self.server.get_player(sender.name)
+        player_name = self._extract_player_name(sender.name)
+        player = self.server.get_player(player_name)
         
         player_balance = self.economy_plugin.get_player_money(player)
         
@@ -321,7 +332,8 @@ class UpAndDownPlugin(Plugin):
         amount = float(args[1])
 
         # 获取玩家对象
-        player = self.server.get_player(sender.name)
+        player_name = self._extract_player_name(sender.name)
+        player = self.server.get_player(player_name)
         
         # 获取玩家股票账户余额
         stock_balance = self.stock_dao.get_balance(xuid)
@@ -359,7 +371,8 @@ class UpAndDownPlugin(Plugin):
             True/False, Message
         '''
         
-        player = self.server.get_player(sender.name)
+        player_name = self._extract_player_name(sender.name)
+        player = self.server.get_player(player_name)
         stock_name = args[1]
         share = args[2]
         
@@ -467,7 +480,8 @@ class UpAndDownPlugin(Plugin):
             
     def help(self, xuid, sender, args):
         """显示帮助信息 - 使用UI形式"""
-        player = self.server.get_player(sender.name)
+        player_name = self._extract_player_name(sender.name)
+        player = self.server.get_player(player_name)
         if player and hasattr(player, 'send_form'):
             # 如果玩家在线且有UI支持，显示UI帮助
             self.ui_manager.show_help_panel(player)
@@ -502,7 +516,8 @@ class UpAndDownPlugin(Plugin):
             sender.send_message(help_str)
         
     def show_orders(self, xuid, sender, args):
-        player = self.server.get_player(sender.name)
+        player_name = self._extract_player_name(sender.name)
+        player = self.server.get_player(player_name)
         
         if len(args) == 1:
             page = 0
@@ -528,7 +543,8 @@ class UpAndDownPlugin(Plugin):
         
     
     def show_shares(self, xuid, sender, args):
-        player = self.server.get_player(sender.name)
+        player_name = self._extract_player_name(sender.name)
+        player = self.server.get_player(player_name)
         
         if len(args) == 1:
             page = 0
