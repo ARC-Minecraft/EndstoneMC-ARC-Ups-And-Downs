@@ -162,3 +162,7 @@ cython_debug/
 # Wheels
 wheelhouse/
 .vscode
+.vs
+# IDE
+.cursor/
+.joycode/
