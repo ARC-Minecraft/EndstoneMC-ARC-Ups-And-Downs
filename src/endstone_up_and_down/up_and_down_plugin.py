@@ -114,8 +114,17 @@ class UpAndDownPlugin(Plugin):
         )
 
         self.economy_plugin = self.server.plugin_manager.get_plugin('arc_core')
-        self.qqsync = self.server.plugin_manager.get_plugin('qqsync_plugin')
-        
+        self.qqsync = self._get_qq_sync_plugin()
+
+    def _get_qq_sync_plugin(self):
+        """Resolve ARC QQ Sync plugin (AstrBot hub id first, legacy id fallback)."""
+        pm = self.server.plugin_manager
+        for name in ("arc-qq-sync-astrbot", "qqsync_plugin"):
+            plug = pm.get_plugin(name)
+            if plug is not None:
+                return plug
+        return None
+
 
     def on_disable(self) -> None:
         pass
@@ -567,20 +576,32 @@ class UpAndDownPlugin(Plugin):
 
     def send_to_qq_group(self, message: str):
         """
-        发送消息到QQ群
-        :param message: 要发送的消息
+        发送消息到QQ群（经弧光 EndStone 消息中枢）。
+        优先 api_send_raw（自动加服务器前缀），其次 api_send_message。
         """
         try:
-            # 发送消息到QQ群
-            success = self.qqsync.api_send_message(message)
-            if success:
-                self.logger.info(f"[ARC Core] 死亡消息已发送到QQ群: {message}")
+            qqsync = self.qqsync or self._get_qq_sync_plugin()
+            if qqsync is None:
+                self.logger.warning("[UpAndDown] QQ Sync 插件未找到，无法发送群消息")
+                return
+            self.qqsync = qqsync
+
+            if hasattr(qqsync, "api_send_raw"):
+                success = qqsync.api_send_raw(message)
+            elif hasattr(qqsync, "api_send_message"):
+                success = qqsync.api_send_message(message)
             else:
-                self.logger.warning(f"[ARC Core] QQ群消息发送失败: {message}")
+                self.logger.warning("[UpAndDown] QQ Sync 无可用发送 API")
+                return
+
+            if success:
+                self.logger.info(f"[UpAndDown] 群消息已发送: {message[:80]}...")
+            else:
+                self.logger.warning(f"[UpAndDown] 群消息发送失败: {message[:80]}...")
         except Exception as e:
-            self.logger.error(f"[ARC Core] QQ群消息发送异常: {str(e)}")
-            # 即使QQ群发送失败，也不影响游戏正常运行
-            
+            self.logger.error(f"[UpAndDown] 群消息发送异常: {str(e)}")
+            # 即使 QQ 群发送失败，也不影响游戏正常运行
+
 
     def update_leaderboard(self):
         def _execute():

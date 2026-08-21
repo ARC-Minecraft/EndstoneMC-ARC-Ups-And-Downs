@@ -8,7 +8,7 @@
 
 - **Python**: 3.13+
 - **Minecraft 服务器**: 支持 EndStone 框架
-- **依赖插件**: arc_core (经济系统)
+- **依赖插件**: arc_core (经济系统)；群日报可选依赖 [endstone-arc-qq-sync-astrbot](https://github.com/ARC-Minecraft/EndstoneMC-ARC-QQ-Sync-Plugin)
 
 ## 📦 依赖安装
 
@@ -140,7 +140,11 @@ update_interval=60
 
 ## 📝 更新日志
 
-### v0.5.0 (最新)
+### v0.5.1 (最新)
+- **🔧 群服互通适配**: 日报改为对接 `arc-qq-sync-astrbot`（AstrBot 弧光消息中枢），兼容旧版 `qqsync_plugin`
+- **📢 发送 API**: 优先使用 `api_send_raw`（自动带服务器前缀），回退 `api_send_message`
+
+### v0.5.0
 - **🎓 新增完整教学系统**: 包含基础知识、交易技巧、风险管理三大模块
 - **⚡ 性能优化**: 所有UI操作改为多线程异步处理，避免服务器卡顿
 - **🔧 配置优化**: 手续费率改为可配置选项，支持动态调整
