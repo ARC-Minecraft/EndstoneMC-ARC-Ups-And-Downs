@@ -697,17 +697,192 @@ class UpAndDownPlugin(Plugin):
             cached_data = self.stock_dao.get_leaderboard_cached_data(is_absolute)
             if len(cached_data) > 0:
                 return cached_data
-                
-            else:
-                return None
+            return []
         except Exception as e:
             self.logger.error(f"Failed to get leaderboard data: {str(e)}")
             return []
-            
-        except Exception as e:
-            self.logger.error(f"Leaderboard update failed: {str(e)}")
-            import traceback
-            self.logger.error(traceback.format_exc())
+
+    def _resolve_player_display_name(self, player_xuid: str) -> str:
+        """Resolve XUID to display name via arc_core when available."""
+        try:
+            if self.ui_manager is not None:
+                return self.ui_manager._get_player_name(player_xuid)
+        except Exception:
+            pass
+        try:
+            arc_core = self.server.plugin_manager.get_plugin("arc_core")
+            if arc_core is not None:
+                name = arc_core.get_player_name_by_xuid(player_xuid)
+                if name:
+                    return str(name)
+        except Exception:
+            pass
+        return f"玩家{str(player_xuid)[:8]}"
+
+    def api_get_leaderboard_text(
+        self,
+        mode: str = "relative",
+        top: int = 5,
+        bottom: int = 5,
+        player_name: str = "",
+    ) -> str:
+        """
+        AI / 外部插件：格式化股票盈亏排行榜文本。
+
+        :param mode: relative（收益率）或 absolute（绝对盈亏）
+        :param top: 前 N 名
+        :param bottom: 倒数 N 名
+        :param player_name: 可选；仅查询该玩家名次与盈亏
+        """
+        is_absolute = str(mode or "relative").strip().lower() in (
+            "absolute", "abs", "money", "绝对", "金额"
+        )
+        try:
+            top_n = max(0, min(20, int(top)))
+        except Exception:
+            top_n = 5
+        try:
+            bottom_n = max(0, min(20, int(bottom)))
+        except Exception:
+            bottom_n = 5
+
+        stored = self.get_leaderboard_data(is_absolute=is_absolute) or []
+        if not stored:
+            return "暂无股票排行榜数据（尚无玩家交易，或排行榜尚未刷新）。"
+
+        title = "绝对盈亏排行榜" if is_absolute else "相对盈亏（收益率）排行榜"
+        last_updated = stored[0].get("last_updated") if stored else None
+        try:
+            updated_str = datetime.datetime.fromtimestamp(float(last_updated)).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+        except Exception:
+            updated_str = "未知"
+
+        focus = str(player_name or "").strip()
+        if focus:
+            focus_lower = focus.lower()
+            for data in stored:
+                name = self._resolve_player_display_name(data.get("player_xuid") or "")
+                if name.lower() != focus_lower and focus_lower not in name.lower():
+                    continue
+                rank = data.get("rank", "?")
+                abs_pl = float(data.get("absolute_profit_loss") or 0)
+                rel_pl = float(data.get("relative_profit_loss") or 0)
+                sign_abs = "+" if abs_pl > 0 else ("-" if abs_pl < 0 else "")
+                sign_rel = "+" if rel_pl > 0 else ("-" if rel_pl < 0 else "")
+                return (
+                    f"{title}（更新: {updated_str}）\n"
+                    f"玩家 {name}：第 {rank} 名\n"
+                    f"绝对盈亏: {sign_abs}${abs(abs_pl):.2f}\n"
+                    f"收益率: {sign_rel}{abs(rel_pl):.2f}%"
+                )
+            return f"排行榜中未找到玩家「{focus}」（可能尚未激活股票账户或无成交）。"
+
+        lines = [f"{title}（更新: {updated_str}）", ""]
+        if top_n > 0:
+            lines.append(f"前{top_n}名：")
+            for data in stored[:top_n]:
+                name = self._resolve_player_display_name(data.get("player_xuid") or "")
+                rank = data.get("rank", "?")
+                abs_pl = float(data.get("absolute_profit_loss") or 0)
+                rel_pl = float(data.get("relative_profit_loss") or 0)
+                if is_absolute:
+                    sign = "+" if abs_pl > 0 else ("-" if abs_pl < 0 else "")
+                    lines.append(f"#{rank} {name}  盈亏 {sign}${abs(abs_pl):.2f}")
+                else:
+                    sign = "+" if rel_pl > 0 else ("-" if rel_pl < 0 else "")
+                    lines.append(
+                        f"#{rank} {name}  收益率 {sign}{abs(rel_pl):.2f}%  "
+                        f"(${abs(abs_pl):.2f})"
+                    )
+            lines.append("")
+
+        if bottom_n > 0 and len(stored) > top_n:
+            lines.append(f"倒数{bottom_n}名：")
+            bottom_rows = list(stored[-bottom_n:])
+            bottom_rows.reverse()
+            for data in bottom_rows:
+                name = self._resolve_player_display_name(data.get("player_xuid") or "")
+                rank = data.get("rank", "?")
+                abs_pl = float(data.get("absolute_profit_loss") or 0)
+                rel_pl = float(data.get("relative_profit_loss") or 0)
+                if is_absolute:
+                    sign = "+" if abs_pl > 0 else ("-" if abs_pl < 0 else "")
+                    lines.append(f"#{rank} {name}  盈亏 {sign}${abs(abs_pl):.2f}")
+                else:
+                    sign = "+" if rel_pl > 0 else ("-" if rel_pl < 0 else "")
+                    lines.append(
+                        f"#{rank} {name}  收益率 {sign}{abs(rel_pl):.2f}%  "
+                        f"(${abs(abs_pl):.2f})"
+                    )
+
+        lines.append("")
+        lines.append("说明：模拟美股交易盈亏，仅供娱乐，不构成投资建议。")
+        return "\n".join(lines)
+
+    def api_get_stock_quote_text(self, symbol: str, period: str = "day") -> str:
+        """
+        AI / 外部插件：查询单个股票现价与走势摘要。
+
+        :param symbol: 股票代码，如 AAPL / TSLA / BTC-USD
+        :param period: price（仅现价）| minute | day | month
+        """
+        stock = str(symbol or "").strip().upper()
+        if not stock:
+            return "股票代码为空"
+        unit = str(period or "day").strip().lower() or "day"
+        if unit in ("price", "now", "current", "现价", "最新"):
+            price, tradeable = self.get_stock_last_price(stock)
+            if price is None:
+                return f"无法获取 {stock} 的价格（代码错误或该市场暂不支持）。"
+            return (
+                f"{stock} 最新价: ${float(price):.2f}\n"
+                f"可交易: {'是' if tradeable else '否'}\n"
+                "以上为 yfinance 参考价，仅供服务器模拟交易使用。"
+            )
+
+        if unit in ("minute", "min", "10m", "分钟"):
+            price_list, _ = self.get_stock_last_price(stock, return_period=True)
+            unit_zh = "近10分钟（1分钟K）"
+        elif unit in ("month", "mo", "1y", "月"):
+            price_list, _ = self.get_stock_last_price(
+                stock, period="1y", interval="1mo", return_period=True
+            )
+            unit_zh = "近10个月（月线）"
+        else:
+            price_list, _ = self.get_stock_last_price(
+                stock, period="1mo", interval="1d", return_period=True
+            )
+            unit_zh = "近10天（日线）"
+
+        if not price_list:
+            return f"无法获取 {stock} 的走势（代码错误或该市场暂不支持）。"
+
+        series = [round(float(p), 2) for p in price_list[-11:]]
+        if len(series) < 2:
+            return f"{stock} 数据不足，暂无法展示走势。"
+
+        latest = series[-1]
+        first = series[0]
+        change = latest - first
+        change_pct = (change / first * 100) if first else 0.0
+        sign = "+" if change > 0 else ""
+        points = []
+        for idx, price in enumerate(series):
+            if idx == 0:
+                points.append(f"{price}")
+                continue
+            prev = series[idx - 1]
+            mark = "↑" if price > prev else ("↓" if price < prev else "→")
+            points.append(f"{mark}{price}")
+
+        return (
+            f"{stock} {unit_zh}走势\n"
+            f"最新: ${latest:.2f}  区间变动: {sign}{change:.2f} ({sign}{change_pct:.2f}%)\n"
+            f"序列: {' '.join(points)}\n"
+            "以上数据仅供参考，建议使用专业行情软件核对。"
+        )
 
     @event_handler
     def on_server_load(self, event: ServerLoadEvent):

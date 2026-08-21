@@ -140,7 +140,10 @@ update_interval=60
 
 ## 📝 更新日志
 
-### v0.5.1 (最新)
+### v0.5.2 (最新)
+- **🤖 AI 工具 API**: 新增 `api_get_leaderboard_text` / `api_get_stock_quote_text`，供 ARC AI Helper 与 AstrBot 弧光中枢查询排行与行情
+
+### v0.5.1
 - **🔧 群服互通适配**: 日报改为对接 `arc-qq-sync-astrbot`（AstrBot 弧光消息中枢），兼容旧版 `qqsync_plugin`
 - **📢 发送 API**: 优先使用 `api_send_raw`（自动带服务器前缀），回退 `api_send_message`
 
